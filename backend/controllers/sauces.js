@@ -11,8 +11,7 @@ exports.getAllSauces = (req, res, next) => {
 exports.getOneSauce = (req, res, next) => {
   Sauce.findOne({ _id: req.params.id })
     .then((sauce) => res.status(200).json(sauce))
-    .catch((error) => res.status(400).json( console.log(error)));
-    
+    .catch((error) => res.status(400).json(console.log(error)));
 };
 
 // Creation d'une sauce ..................................................
@@ -24,6 +23,10 @@ exports.createSauce = (req, res, next) => {
     imageUrl: `${req.protocol}://${req.get("host")}/images/${
       req.file.filename
     }`,
+    likes: 0,
+    dislikes: 0,
+    usersLiked: ["string"],
+    usersDisliked: ["string"],
   });
   sauce
     .save()
@@ -52,31 +55,55 @@ exports.modifySauce = (req, res, next) => {
 //Suppression d'une sauce .....................................................
 exports.deleteSauce = (req, res, next) => {
   Sauce.findOne({ _id: req.params.id }).then((sauce) => {
-    if (!sauce) {
-      res.status(404).json({
-        error: new Error("No such Sauce!"),
-      });
-    }
-    if (sauce.userId !== req.auth.userId) {
-      res.status(400).json({
-        error: new Error("Unauthorized request!"),
-      });
-    }
-    Sauce.deleteOne({ _id: req.params.id })
-      .then(() => {
-        res.status(200).json({
-          message: "Deleted!",
+    const filename = sauce.imageUrl.split("/images/"[1]);
+    fs.unlink(`images/${filename}`, () => {
+      Sauce.deleteOne({ _id: req.params.id })
+        .then(() => {
+          res.status(200).json({
+            message: "Deleted!",
+          });
+        })
+        .catch((error) => {
+          res.status(400).json({
+            error: error,
+          });
         });
-      })
-      .catch((error) => {
-        res.status(400).json({
-          error: error,
-        });
-      });
+    });
   });
 };
 
-//like d'une sauce .......................................................
-exports.likeSauce = (req, res, next) => {};
-//dislike d'une sauce ....................................................
-exports.dislikeSauce = (req, res, next) => {};
+exports.likeSauce = (req, res, next) => {
+  Sauce.findOne({ _id: req.params.id })
+    .then((sauce) => {
+      if (req.body.like == 1) {
+        sauce.usersLiked.push(req.body.userId);
+        sauce.likes += req.body.like;
+      } else if (req.body.like == -1) {
+        sauce.usersDisliked.push(req.body.userId);
+        sauce.dislikes -= req.body.like;
+      }
+      if (
+        sauce.usersLiked.indexOf(req.body.userId) != -1 &&
+        req.body.like == 0
+      ) {
+        const likesIndex = sauce.usersLiked.findIndex(
+          (user) => user === req.body.userId
+        );
+        sauce.usersLiked.splice(likesIndex, 1);
+        sauce.likes -= 1;
+      }
+      if (
+        sauce.usersDisliked.indexOf(req.body.userId) != -1 &&
+        req.body.like == 0
+      ) {
+        const likesIndex = sauce.usersDisliked.findIndex(
+          (user) => user === req.body.userId
+        );
+        sauce.usersDisliked.splice(likesIndex, 1);
+        sauce.dislikes -= 1;
+      }
+      sauce.save();
+      res.status(201).json({ message: "Avis modifié !" });
+    })
+    .catch((error) => res.status(500).json({ error }));
+};
